@@ -256,6 +256,77 @@ prompt_optimize_dsh/
 
 ---
 
+## 🤖 Agent 实装指引（写给协助安装本插件的 AI 助手）
+
+> 读者是用户 DSH 里的 agent（Claude/Codex/DSH 自身等）。按本节顺序执行可以把事做对；每条"铁律"都对应一次真实事故。
+
+### 0 · 先探测运行环境（决定安装方式）
+
+| 探测结果 | 结论 | 走 |
+|---|---|---|
+| 当前会话工具里存在 `dev_inject_plugin` / `dev_install_package` / `dev_plugin_status` | 装有超级模组（dsh-super-injector） | 方式 A（免重启热注入 → 转正式） |
+| 终端可用 `dsh` CLI，或能确定 `<dshHome>/profiles/` 目录 | 常规 dsh web / 桌面部署 | 方式 B（bundle 装配 + 重启） |
+| 两者都没有 | 无法自动化安装 | 给用户手动步骤并让其重启 |
+
+### 1 · 安装动作
+
+**方式 A（有超级模组，推荐顺序）**
+1. `git clone https://github.com/xiaozuishuai-eng/prompt_optimize_dsh.git` 到本地稳定目录；
+2. `node scripts/link-deps.cjs`（自动探测 DSH 部署的 node_modules；失败则把该路径作为第一个参数传入。桌面版常见位置：安装目录 `resources/dsh/node_modules`）；
+3. 用注入器的"注入本地目录"能力装载该目录（如 `dev_inject_plugin dir=<目录绝对路径>`），注入成功输出应含 `host ✓`；
+4. **立刻执行 §3 验收**，不要只看注入返回；
+5. 验收通过后用安装能力转正式（如 `dev_install_package dir=<同一目录>`），使其重启后常驻。
+
+**方式 B（bundle 装配）**
+1. 把仓库放进 profile 可解析目录（如 `<dshHome>/profiles/<profile>/node_modules/dsh-prompt-optimizer`，或 package.json 里 `link:` 依赖）；
+2. 二选一登记：profile 的 `package.json` → `dependencies` + `dsh.profile.bundles` 各加一项；**或** `<dshHome>/profiles/<profile>/cordis.patch.yml` 追加（不要同时用两种，见铁律 1）：
+   ```yaml
+   - insert:
+       - id: prompt-optimizer
+         name: 'dsh-prompt-optimizer'
+         config: {}
+   ```
+3. **完全退出** DSH 再启动（桌面版是 Electron，窗口内 F5 可能命中缓存，退出重开最可靠）。
+
+### 2 · 铁律（违反必坏过）
+
+1. **单挂载通道**：同一插件绝不同时存在于"注入器恢复注册表"和"profile bundles/patch"两条装配路径——双 fiber 竞态会互删共享路由表，症状是"命令活着但 HTTP 全 404"、时好时坏。转正式（bundles）后必须清掉注入器注册表里的该条目。
+2. **草稿态斜杠命令是 harness 缺陷路径**：部分版本在"首页草稿输入框"提交 slash 命令会导致界面卡死并丢失会话。本插件从 v1.1.0 起由**页面脚本拦截**绕开（hero 输入框内 `/optimize` 开头的回车改走自身 `/submit` 通道）——因此**安装/升级浏览器端脚本后，用户窗口必须重载一次**，否则拦截不存在。
+3. **验证先于交付**：安装类操作的成功输出 ≠ 功能可用，以 §3 清单为准。
+4. **`dshHomePath` 服务是函数不是字符串**（`dshHomePath(...segments)`）；写任何 DSH 插件持久化时注意，按字符串拼接会静默抛错。
+
+### 3 · 验收清单（逐项做，全绿才算装好）
+
+1. `GET http://127.0.0.1:<port>/api/prompt-optimizer/status` → 200，`version` 为预期版本（≥1.1.3 才含全部自愈能力）；
+2. 同响应 `pollers` 数组存在 `ageMs < 3000` 的条目（= 用户窗口页面脚本在跑；刚装完为空属正常——让用户重载窗口后再查一次；注意另开标签看 status 本身不产生 poller）；
+3. 既有会话发送 `/optimize 写一句问好文案` → 约 15~40 秒后聊天流输出完整八大板块结果；
+4. 新会话（首页草稿）发送 `/optimize …` → **秒级**出现"⏳ 已受理"，随后结果自动填入输入框；
+5. （可选）结果产出期间重载页面 → 5 分钟内未消费的最近结果会自动补填一次（v1.1.3 起）。
+
+### 4 · 故障判定树（三字段定位）
+
+| 现象 | 判定 | 处置 |
+|---|---|---|
+| status 404 | 插件 host 未挂载/路由未起 | 查 bundles/patch 登记与重复；完全重启 DSH；等 10s（看门狗自愈窗口）再试 |
+| status 200，`pollers` 空 | 页面没跑脚本 | 重载窗口（Ctrl+Shift+R）；`GET /` 看首页 HTML 是否含 `dsh-po-client-script`；仍无 → 检查 client 模块通道与 `/api/prompt-optimizer/client.js` 是否 200 |
+| `pollers` 有心跳但输入框无结果 | 模型调用或投递问题 | 看 `route` 字段 provider/model 是否符合预期；看 `arms` 是否增长——增长=服务端已产出，问题在页面（重载）；不增长=模型路由问题 |
+| 全部正常但结果格式异常 | 规范文件问题 | 输出头部若有 ⚠️ 回退提示 → `specPath` 不可读，检查路径/权限 |
+
+### 5 · 版本选择
+
+- **默认部署最新 tag（或 main 顶端）**：本仓库每个补丁版本都对应一次真实竞态/边界修复，无保留旧版的收益；
+- **最低可交付版本 = v1.1.1**；v1.1.0 及更早存在"冷启动后通道失效"缺陷；v1.1.2/1.1.3 补齐服务端与页面端自愈，**强烈建议直接 ≥v1.1.3**；
+- 配置项只增不减（`specPath/provider/model/timeoutMs/maxInputChars/historySize/pure/autoFill/contextAware/contextMaxChars`），升级无破坏性变更；
+- 若宿主机 DSH 缺少 `commands`/`webServer` 服务（异常环境），插件会自动降级为仅核心管线可用，不崩溃。
+
+### 6 · 装完后给用户的三句话（建议原样转述）
+
+1. 任意会话说 `/optimize 你的需求`，结果会自己出现在输入框，改两个字直接发送；
+2. `/optimize revise 意见` 迭代，`--pure` 只要本体，追问就一句话它会自己合并上下文；
+3. 哪天不填入了，打开 `http://127.0.0.1:<port>/api/prompt-optimizer/status` 把 JSON 发给助手即可定位。
+
+---
+
 ## 🧠 为何不接"网页版 DeepSeek"
 
 最初评估过用 `chat.deepseek.com` 网页版做"免费"接入，但可行方案要么是浏览器自动化（登录态易失效、DOM 频繁变动、验证码/风控、违反服务条款），要么是第三方逆向封装 SDK（如 `deepseek-driver` / `deepseek-free-api`，属绕过网页端机制的非官方逆向，稳定性与合规风险都高）。因此本插件选择**复用 DSH 内置的官方 API 路由**这一最稳、零密钥、与主对话同成本的方案。
