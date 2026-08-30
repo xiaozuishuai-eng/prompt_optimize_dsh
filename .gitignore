@@ -1,0 +1,6 @@
+node_modules/
+*.log
+.DS_Store
+npm-debug.log*
+# 本地个性化配置（若你 fork 后写了个人 patch 带私有路径，勿提交）
+cordis.patch.local.yml

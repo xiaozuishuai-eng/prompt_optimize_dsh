@@ -1,0 +1,14 @@
+# dsh-prompt-optimizer 作为 bundle 安装时的自带 patch。
+# 默认零配置即可用（规范文件走包内 spec/prompt-engineer-spec.md，模型跟随主对话路由）。
+# 如需个性化配置，把本条目的 config 取消注释并改成你的值：
+- insert:
+    - id: prompt-optimizer
+      name: 'dsh-prompt-optimizer'
+      config: {}
+      # config:
+      #   specPath: '/path/to/你的提示词规范.md'   # 换你自己的规范文档（保存即热生效）
+      #   provider: 'deepseek'                     # 与 model 成对出现才覆盖主对话路由
+      #   model: 'deepseek-chat'
+      #   timeoutMs: 90000
+      #   pure: false                              # true = 默认纯输出（只回提示词本体）
+      #   autoFill: true                           # false = 关闭"结果自动填入输入框"
