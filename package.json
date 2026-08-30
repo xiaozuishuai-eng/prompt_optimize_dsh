@@ -1,6 +1,6 @@
 {
   "name": "dsh-prompt-optimizer",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": false,
   "description": "AI 提示词优化器 DSH 插件：/optimize 命令 + optimize_prompt 工具，按《提示词工程师规范》把口语化需求转为结构化提示词；上下文感知锚定、结果自动填入 harness 输入框（复用 DSH ctx.llm 模型路由，零密钥自管）",
   "type": "module",
